@@ -18,3 +18,6 @@ Thumbs.db
 # IDE / Editor
 .vscode/
 .idea/
+
+# Local reference docs (analysis notes)
+docs/reference/

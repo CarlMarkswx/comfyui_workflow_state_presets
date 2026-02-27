@@ -4,9 +4,9 @@ import { app } from "/scripts/app.js";
  * Phase 1: bypass 套装记录/应用 + index 自动切换
  */
 
-const EXTENSION_NAME = "comfyui.workflow_preset_switch";
-const TARGET_NODE_NAME = "WorkflowPresetSwitch";
-const STORE_KEY = "comfyui_workflow_preset_switch";
+const EXTENSION_NAME = "comfyui.preset_switch";
+const TARGET_NODE_NAME = "PresetSwitch";
+const STORE_KEY = "comfyui_workflow_state_presets";
 const STORE_VERSION = 1;
 
 function getGraph() {

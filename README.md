@@ -1,4 +1,4 @@
-# comfyui_workflow_preset_switch
+# ComfyUI Workflow State Presets
 
 ComfyUI workflow preset switching plugin.  
 Use an `int` index (`preset_index`) to quickly switch between multiple presets in a single workflow.
@@ -14,7 +14,7 @@ Use an `int` index (`preset_index`) to quickly switch between multiple presets i
 
 ## ✨ About
 
-`comfyui_workflow_preset_switch` is a custom node plugin for ComfyUI that helps you quickly toggle workflow states.
+`ComfyUI Workflow State Presets` is a custom node plugin for ComfyUI that helps you quickly toggle workflow states.
 
 You can record the current node bypass/mode status as a preset, and switch between presets by changing a single integer value (`preset_index`). This is useful when one workflow needs multiple runtime configurations (different node activation combinations) without manually toggling nodes one by one.
 
@@ -22,7 +22,7 @@ You can record the current node bypass/mode status as a preset, and switch betwe
 
 ## 🚀 Features (Current: Phase 1)
 
-- Add node: `WorkflowPresetSwitch`
+- Add node: `Preset Switch`
   - Input: `preset_index: INT`
   - Output: `preset_index: INT` (pass-through)
 - Preset actions on node:
@@ -31,7 +31,7 @@ You can record the current node bypass/mode status as a preset, and switch betwe
   - `Prev Preset` / `Next Preset`
 - Auto-apply when `preset_index` changes
 - Workflow-level persistence via:
-  - `workflow.graph.extra.comfyui_workflow_preset_switch`
+  - `workflow.graph.extra.comfyui_workflow_state_presets`
 
 ---
 
@@ -41,19 +41,19 @@ You can record the current node bypass/mode status as a preset, and switch betwe
 
    ```bash
    cd /path/to/ComfyUI/custom_nodes
-   git clone <your-repo-url> comfyui_workflow_preset_switch
+   git clone <your-repo-url> comfyui_workflow_state_presets
    ```
 
 2. Restart ComfyUI.
-3. Search and add node: `Workflow Preset Switch`.
+3. Search and add nodes: `Preset Switch` / `Preset Group Editor`.
 
-> Windows example: `ComfyUI\custom_nodes\comfyui_workflow_preset_switch`
+> Windows example: `ComfyUI\\custom_nodes\\comfyui_workflow_state_presets`
 
 ---
 
 ## 🧭 Quick Start
 
-1. Add `Workflow Preset Switch` to your workflow.
+1. Add `Preset Switch` to your workflow.
 2. Set node bypass/mode states as preset A.
 3. Set `preset_index=0`, click `Record Current`.
 4. Change node states as preset B.
@@ -65,7 +65,7 @@ You can record the current node bypass/mode status as a preset, and switch betwe
 ## 📁 Project Structure
 
 ```text
-comfyui_workflow_preset_switch/
+comfyui_workflow_state_presets/
 ├─ README.md
 ├─ README.zh-CN.md
 ├─ README.en.md
@@ -77,7 +77,8 @@ comfyui_workflow_preset_switch/
 │  ├─ 开发文档.md
 │  └─ 需求简述.ini
 └─ web/
-   ├─ workflow_preset_switch.js
+   ├─ preset_switch.js
+   ├─ preset_group_editor.js
    └─ style.css
 ```
 
