@@ -206,15 +206,35 @@ function drawRoundedRectPath(ctx, x, y, w, h, r) {
 
 function getControlLayout(width, showNav) {
   const margin = 10;
-  const colWidth = 72;
-  const navWidth = showNav ? 86 : 0;
-  const right = width - margin;
+  const minNameWidth = 76;
+  const minColWidth = 42;
+  const maxColWidth = 72;
+  const minNavWidth = 52;
+  const maxNavWidth = 86;
+
+  const safeWidth = Math.max(200, Number(width) || 0);
+  const outerLeft = margin;
+  const outerRight = safeWidth - margin;
+  const innerWidth = Math.max(120, outerRight - outerLeft);
+
+  // 当宽度不足时，优先压缩列宽，避免标题与按钮区域互相覆盖
+  const controlsMax = maxColWidth * 3 + (showNav ? maxNavWidth : 0);
+  const controlsMin = minColWidth * 3 + (showNav ? minNavWidth : 0);
+  const availableControls = Math.max(controlsMin, innerWidth - minNameWidth - 8);
+  const controlsWidth = Math.min(controlsMax, availableControls);
+
+  const lerpRange = Math.max(1, controlsMax - controlsMin);
+  const t = Math.max(0, Math.min(1, (controlsWidth - controlsMin) / lerpRange));
+
+  const colWidth = minColWidth + (maxColWidth - minColWidth) * t;
+  const navWidth = showNav ? minNavWidth + (maxNavWidth - minNavWidth) * t : 0;
+  const right = outerRight;
 
   const navLeft = right - navWidth;
   const disableLeft = navLeft - colWidth;
   const bypassLeft = disableLeft - colWidth;
   const enableLeft = bypassLeft - colWidth;
-  const nameLeft = margin + 10;
+  const nameLeft = outerLeft + 10;
   const nameRight = enableLeft - 8;
 
   const enableX = enableLeft + colWidth * 0.5;
@@ -247,6 +267,79 @@ function fitLabel(ctx, label, maxWidth) {
     s = s.slice(0, -1);
   }
   return `${s}…`;
+}
+
+function renameGroupWithPrompt(node, row, triggerEvent = null) {
+  const group = row?.__group;
+  if (!group) return false;
+
+  const currentTitle = String(group?.title || "");
+  const applyRename = (nextTitleRaw) => {
+    if (nextTitleRaw == null) return false;
+    const nextTitle = String(nextTitleRaw).trim();
+    if (!nextTitle || nextTitle === currentTitle) return false;
+
+    group.title = nextTitle;
+    row.name = `Group ${nextTitle}`;
+    refreshGroupWidgets(node);
+    app.graph?.setDirtyCanvas(true, true);
+    return true;
+  };
+
+  // 使用 ComfyUI/LiteGraph 原生弹窗，而非浏览器 window.prompt
+  const canvas = app.canvas;
+  if (typeof canvas?.prompt === "function") {
+    canvas.prompt("Rename Group 重命名分组", currentTitle, (value) => {
+      applyRename(value);
+    }, triggerEvent);
+    return true;
+  }
+
+  console.warn(`[${EXTENSION_NAME}] canvas.prompt unavailable, rename aborted`);
+  return false;
+}
+
+function applyManualOrder(groups, manualOrder) {
+  if (!Array.isArray(groups) || !groups.length) return [];
+  if (!Array.isArray(manualOrder) || !manualOrder.length) return groups;
+
+  const ordered = [];
+  const set = new Set(groups);
+  for (const g of manualOrder) {
+    if (set.has(g)) {
+      ordered.push(g);
+      set.delete(g);
+    }
+  }
+  for (const g of groups) {
+    if (set.has(g)) {
+      ordered.push(g);
+      set.delete(g);
+    }
+  }
+  return ordered;
+}
+
+function stabilizeByCurrentRows(node, groups) {
+  const rows = getRows(node);
+  if (!rows.length) return groups;
+
+  const set = new Set(groups);
+  const ordered = [];
+  for (const row of rows) {
+    const group = row?.__group;
+    if (set.has(group)) {
+      ordered.push(group);
+      set.delete(group);
+    }
+  }
+  for (const g of groups) {
+    if (set.has(g)) {
+      ordered.push(g);
+      set.delete(g);
+    }
+  }
+  return ordered;
 }
 
 function createGroupHeaderWidget(node) {
@@ -359,13 +452,20 @@ function createGroupRowWidget(node, group) {
       drawCircle(ctx, disableX, centerY, r, "#cf5e5e", row.__state === "disable");
 
       const label = String(group?.title || "Untitled Group 未命名分组");
-      const maxWidth = Math.max(40, layout.nameRight - layout.nameLeft - 8);
+      const nameTextLeft = layout.nameLeft;
+      const maxWidth = Math.max(40, layout.nameRight - nameTextLeft - 8);
       ctx.fillStyle = "#ddd";
       ctx.font = "12px Arial";
       ctx.textAlign = "left";
-      ctx.fillText(fitLabel(ctx, label, maxWidth), layout.nameLeft, y + h * 0.68);
+      ctx.fillText(fitLabel(ctx, label, maxWidth), nameTextLeft, y + h * 0.68);
 
       row.__hitAreas = {
+        name: {
+          x: layout.nameLeft,
+          y: y + 2,
+          w: Math.max(12, layout.nameRight - layout.nameLeft),
+          h: h - 4,
+        },
         enable: { x: enableX - r - 2, y: centerY - r - 2, w: r * 2 + 4, h: r * 2 + 4 },
         bypass: { x: bypassX - r - 2, y: centerY - r - 2, w: r * 2 + 4, h: r * 2 + 4 },
         disable: { x: disableX - r - 2, y: centerY - r - 2, w: r * 2 + 4, h: r * 2 + 4 },
@@ -373,7 +473,13 @@ function createGroupRowWidget(node, group) {
       };
     },
     mouse(event, pos) {
-      if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
+      const eventType = event?.type;
+      const isDown = eventType === "pointerdown" || eventType === "mousedown";
+      const isMove = eventType === "pointermove" || eventType === "mousemove";
+      const isUp = eventType === "pointerup" || eventType === "mouseup";
+      const isDblByEvent = eventType === "dblclick" || Number(event?.detail || 0) >= 2;
+      if (!isDown && !isDblByEvent && !isMove && !isUp) return false;
+
       const hit = row.__hitAreas;
       if (!hit) return false;
 
@@ -392,6 +498,23 @@ function createGroupRowWidget(node, group) {
         applyState(node, row, "disable");
         return true;
       }
+
+      if (inside(hit.name)) {
+        // 双击触发重命名：优先事件双击，其次时间窗兜底（避免某些环境没有 dblclick 事件）
+        const now = Date.now();
+        const last = row.__lastNameClickAt || 0;
+        const lastPos = row.__lastNameClickPos || pos;
+        const closeEnough = Math.abs((pos?.[0] || 0) - (lastPos?.[0] || 0)) < 10 && Math.abs((pos?.[1] || 0) - (lastPos?.[1] || 0)) < 10;
+        const isDblByTime = isDown && now - last < 320 && closeEnough;
+        row.__lastNameClickAt = now;
+        row.__lastNameClickPos = [pos?.[0] || 0, pos?.[1] || 0];
+
+        if (isDblByEvent || isDblByTime) {
+          return renameGroupWithPrompt(node, row, event);
+        }
+        return true;
+      }
+
       if (inside(hit.nav) && node?.properties?.[PROPERTY_SHOW_NAV] !== false) {
         const canvas = app.canvas;
         if (canvas && row.__group) {
@@ -457,7 +580,14 @@ function refreshGroupWidgets(node) {
   if (!node || node.type !== TARGET_NODE_NAME) return;
   ensureProperties(node);
 
-  const groups = getGroupsFromNode(node);
+  const computedGroups = getGroupsFromNode(node);
+  let groups = computedGroups;
+  if (Array.isArray(node.__fgmManualOrder) && node.__fgmManualOrder.length) {
+    groups = applyManualOrder(computedGroups, node.__fgmManualOrder);
+  } else {
+    groups = stabilizeByCurrentRows(node, computedGroups);
+  }
+
   const currentRows = getRows(node);
   const existingMap = new Map(currentRows.map((w) => [w.__group, w]));
 
@@ -485,12 +615,47 @@ function refreshGroupWidgets(node) {
     groupWidgets.push(row);
   }
   node.widgets = [...fixedWidgets, headerWidget, ...groupWidgets];
+  node.__fgmManualOrder = groupWidgets.map((w) => w.__group).filter(Boolean);
   node.setDirtyCanvas?.(true, true);
 }
 
 function injectNodeUI(node) {
   if (!node || node.__fgmInjected) return;
   node.__fgmInjected = true;
+  
+  // 设置节点最小尺寸，避免拖拽缩放后表头/列区域重叠
+  const getMinWidth = () => (node?.properties?.[PROPERTY_SHOW_NAV] === false ? 300 : 360);
+  const enforceMinNodeSize = () => {
+    const minWidth = getMinWidth();
+    const minHeight = 100;
+    const nextW = Math.max(minWidth, node.size?.[0] || 0);
+    const nextH = Math.max(minHeight, node.size?.[1] || 0);
+    if (nextW !== node.size?.[0] || nextH !== node.size?.[1]) {
+      node.size = [nextW, nextH];
+    }
+  };
+
+  node.minSize = [getMinWidth(), 100];
+  enforceMinNodeSize();
+
+  if (!node.__fgmPatchedResize) {
+    node.__fgmPatchedResize = true;
+    const onResize = node.onResize;
+    node.onResize = function onResizePatched(...args) {
+      const result = onResize?.apply(this, args);
+      this.minSize = [this?.properties?.[PROPERTY_SHOW_NAV] === false ? 300 : 360, 100];
+      const minWidth = this.minSize[0];
+      const minHeight = this.minSize[1];
+      const nextW = Math.max(minWidth, this.size?.[0] || 0);
+      const nextH = Math.max(minHeight, this.size?.[1] || 0);
+      if (nextW !== this.size?.[0] || nextH !== this.size?.[1]) {
+        this.size = [nextW, nextH];
+      }
+      this.setDirtyCanvas?.(true, true);
+      return result;
+    };
+  }
+
   ensureProperties(node);
 
   if (!Array.isArray(node.outputs) || !node.outputs.length) {
