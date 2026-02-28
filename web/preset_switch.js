@@ -247,6 +247,19 @@ function listPresetIndexes() {
     .sort((a, b) => a - b);
 }
 
+function deletePreset(index) {
+  const store = ensureStore();
+  if (!store) return false;
+
+  const idx = String(normalizeIndex(index));
+  if (!store.presets?.[idx]) return false;
+
+  delete store.presets[idx];
+  app.graph?.setDirtyCanvas(true, true);
+  console.log(`[${EXTENSION_NAME}] deleted preset #${idx}`);
+  return true;
+}
+
 function nextPresetIndex(current) {
   const indexes = listPresetIndexes();
   if (!indexes.length) return normalizeIndex(current);
@@ -431,9 +444,10 @@ function injectNodeButtons(node) {
     refreshPresetWidgets(node);
   });
 
-  node.addWidget("button", "Apply Current 应用当前", null, () => {
+  node.addWidget("button", "Delete Selected 删除所选", null, () => {
     const idx = getPresetIndexFromNode(node);
-    switchPresetByIndex(node, idx, { syncIndexWidget: false });
+    deletePreset(idx);
+    refreshPresetWidgets(node);
   });
 
   node.addWidget("button", "Prev Preset 上一个预设", null, () => {
