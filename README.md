@@ -26,17 +26,21 @@ You can record the current node bypass/mode status as a preset, and switch betwe
   - Input: `preset_index: INT`
   - Output: `preset_index: INT` (pass-through)
 - Preset actions on node:
+  - `Add Preset`
   - `Record Current`
-  - `Apply Current`
+  - `Delete Selected`
   - `Prev Preset` / `Next Preset`
-  - `Preset Browser` (visual list + click to switch)
-  - `Rename Current`
+  - `Preset Browser` (embedded visual list + click to switch)
+  - `Rename Current` (string widget)
 - Auto-apply when `preset_index` changes
+- Supports resolving `preset_index` from linked upstream numeric nodes (including reroute chains)
 - Workflow-level persistence via:
   - `workflow.graph.extra.comfyui_workflow_state_presets`
+- Preset snapshot contains both `mode` and `bypass` states per node
 - Add node: `Preset Group Editor`
   - Group tri-state control: Enable / Bypass / Disable
   - Supports filtering, sorting, navigation, and restriction strategies
+  - Supports double-click group rename and batch actions (Enable All / Bypass All / Muted All)
   - Compatibility output `OPT_CONNECTION` is hidden by default
 
 ---
@@ -95,6 +99,7 @@ comfyui_workflow_state_presets/
 - Current version focuses on mode/bypass switching only.
 - Parameter snapshots and link switching are planned for future phases.
 - Presets restore by node id; missing nodes are skipped with warnings.
+- Presets are currently workflow-scoped (saved in workflow metadata), not a global preset library.
 
 ---
 

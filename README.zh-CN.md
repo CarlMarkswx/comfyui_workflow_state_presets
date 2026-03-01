@@ -23,17 +23,20 @@
    - 输出：`preset_index: INT`（透传）
 
 2. 节点按钮（在 `Preset Switch` 上）
+   - `Add Preset`：自动创建下一个可用索引的新预设并切换过去
    - `Record Current`：将当前工作流所有节点的 mode/bypass 状态记录到当前 index
-   - `Apply Current`：应用当前 index 的套装
+   - `Delete Selected`：删除当前 index 对应预设
    - `Prev Preset` / `Next Preset`：在已有套装索引间循环切换并应用
-   - `Preset Browser`：可视化显示已记录 preset 列表，支持点击切换
-   - `Rename Current`：重命名当前 preset
+   - `Preset Browser`：节点内嵌可视化 preset 列表，支持点击切换
+   - `Rename Current`：通过字符串输入框重命名当前 preset
 
 3. 自动切换
    - 当 `preset_index` 改变时，前端自动应用对应套装
+   - 当 `preset_index` 输入被连接时，可从上游数字节点自动解析索引（支持 Reroute 链）
 
 4. 持久化
    - 套装数据写入 `workflow.graph.extra.comfyui_workflow_state_presets`，随工作流保存
+   - 预设快照按节点保存 `mode` 与 `bypass` 两类状态
 
 5. 新增节点：`Preset Group Editor`
    - 用于统一管理工作流 Group 内节点的三态切换：
@@ -41,6 +44,8 @@
      - 绕过（`BYPASS / mode=4`）
      - 停用（`NEVER`）
    - 保留并支持：颜色过滤、标题过滤、导航跳转、跨子图、排序、自定义字母序、启用限制（`default/max one/always one`）
+   - 支持在分组名称区域双击重命名（调用 ComfyUI/LiteGraph 原生 prompt）
+   - 支持批量按钮：`Enable All 全部启用` / `Bypass All 全部绕过` / `Muted All 全部停用`
    - 节点内置兼容输出 `OPT_CONNECTION`（已默认隐藏，不影响 UI 操作）
 
 ## 安装方式
@@ -94,6 +99,7 @@ comfyui_workflow_state_presets/
 
 - 当前仅切换 mode/bypass，不包含参数快照与连线切换。
 - 套装按 node id 恢复；若节点已删除会跳过并在控制台告警。
+- 目前套装仅为工作流级存储（写入 workflow metadata），尚未提供全局共享预设库。
 
 ## 开源协议
 
