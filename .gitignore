@@ -21,3 +21,6 @@ Thumbs.db
 
 # Local reference docs (analysis notes)
 docs/reference/
+
+# Local private requirement note (do not publish to GitHub)
+docs/需求简述.ini

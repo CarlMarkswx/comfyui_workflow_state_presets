@@ -83,7 +83,7 @@ comfyui_workflow_state_presets/
 ├─ nodes.py
 ├─ docs/
 │  ├─ 开发文档.md
-│  └─ 需求简述.ini
+│  └─ reference/
 └─ web/
    ├─ preset_group_editor.js
    ├─ preset_switch.js
