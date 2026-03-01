@@ -280,6 +280,12 @@ function prevPresetIndex(current) {
   return indexes[indexes.length - 1];
 }
 
+function nextAvailablePresetIndex() {
+  const indexes = listPresetIndexes();
+  if (!indexes.length) return 0;
+  return Math.max(...indexes) + 1;
+}
+
 function setIndexWidgetValue(node, value) {
   const widget = node?.widgets?.find((w) => w?.name === "preset_index");
   if (!widget) return;
@@ -437,6 +443,16 @@ function injectNodeButtons(node) {
 
   node.__wpsLastAppliedIndex = null;
   ensurePresetPanelWidget(node);
+
+  node.addWidget("button", "Add Preset 新增预设", null, () => {
+    const idx = nextAvailablePresetIndex();
+    const ok = recordPreset(idx);
+    if (!ok) return;
+
+    // 新增预设后自动切换到该 index；若输入已被外部连接，则只应用不改 widget 值
+    switchPresetByIndex(node, idx, { syncIndexWidget: !isPresetInputLinked(node) });
+    refreshPresetWidgets(node);
+  });
 
   node.addWidget("button", "Record Current 记录当前", null, () => {
     const idx = getPresetIndexFromNode(node);
