@@ -131,6 +131,10 @@ function defaultPresetName(index) {
   return `Preset ${normalizeIndex(index)} 预设`;
 }
 
+function isDefaultPresetName(name, index) {
+  return String(name ?? "") === defaultPresetName(index);
+}
+
 function getPresetName(index) {
   const store = ensureStore();
   if (!store) return defaultPresetName(index);
@@ -251,12 +255,34 @@ function deletePreset(index) {
   const store = ensureStore();
   if (!store) return false;
 
-  const idx = String(normalizeIndex(index));
-  if (!store.presets?.[idx]) return false;
+  const removeIdx = normalizeIndex(index);
+  const removeKey = String(removeIdx);
+  if (!store.presets?.[removeKey]) return false;
 
-  delete store.presets[idx];
+  const nextPresets = {};
+  const indexes = Object.keys(store.presets || {})
+    .map((k) => Number(k))
+    .filter((v) => Number.isFinite(v))
+    .sort((a, b) => a - b);
+
+  for (const oldIdx of indexes) {
+    if (oldIdx === removeIdx) continue;
+
+    const oldKey = String(oldIdx);
+    const preset = store.presets[oldKey];
+    const newIdx = oldIdx > removeIdx ? oldIdx - 1 : oldIdx;
+    const nextPreset = { ...(preset || {}) };
+
+    if (isDefaultPresetName(nextPreset.name, oldIdx)) {
+      nextPreset.name = defaultPresetName(newIdx);
+    }
+
+    nextPresets[String(newIdx)] = nextPreset;
+  }
+
+  store.presets = nextPresets;
   app.graph?.setDirtyCanvas(true, true);
-  console.log(`[${EXTENSION_NAME}] deleted preset #${idx}`);
+  console.log(`[${EXTENSION_NAME}] deleted preset #${removeIdx} and reindexed presets`);
   return true;
 }
 
@@ -462,7 +488,13 @@ function injectNodeButtons(node) {
 
   node.addWidget("button", "Delete Selected 删除所选", null, () => {
     const idx = getPresetIndexFromNode(node);
-    deletePreset(idx);
+    const ok = deletePreset(idx);
+    if (ok && !isPresetInputLinked(node)) {
+      const indexes = listPresetIndexes();
+      const fallback = indexes.length ? Math.min(idx, indexes[indexes.length - 1]) : 0;
+      switchPresetByIndex(node, fallback, { syncIndexWidget: true });
+      return;
+    }
     refreshPresetWidgets(node);
   });
 
