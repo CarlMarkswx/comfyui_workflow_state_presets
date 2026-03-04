@@ -1,0 +1,36 @@
+[project]
+name = "workflow_state_presets"
+description = "ComfyUI workflow preset switching plugin that allows quick toggling between multiple presets in a single workflow using an index value."
+version = "1.0.0"
+license = {file = "LICENSE"} 
+# classifiers = [
+#     # For OS-independent nodes (works on all operating systems)
+#     "Operating System :: OS Independent",
+#
+#     # OR for OS-specific nodes, specify the supported systems:
+#     "Operating System :: Microsoft :: Windows",  # Windows specific
+#     "Operating System :: POSIX :: Linux",  # Linux specific
+#     "Operating System :: MacOS",  # macOS specific
+#
+#     # GPU Accelerator support. Pick the ones that are supported by your extension.
+#     "Environment :: GPU :: NVIDIA CUDA",    # NVIDIA CUDA support
+#     "Environment :: GPU :: AMD ROCm",       # AMD ROCm support
+#     "Environment :: GPU :: Intel Arc",      # Intel Arc support
+#     "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
+#     "Environment :: GPU :: Apple Metal",    # Apple Metal support
+# ]
+
+
+[project.urls]
+Repository = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets"
+#  Used by Comfy Registry https://registry.comfy.org
+Documentation = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets/wiki"
+"Bug Tracker" = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets/issues"
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "comfyui_workflow_state_presets"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+
