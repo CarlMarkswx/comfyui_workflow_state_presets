@@ -1,6 +1,7 @@
 [project]
 name = "workflow_state_presets"
-description = "ComfyUI workflow state preset plugin: one-index switching for node Enable/Bypass/Disable with Preset Switch and Preset Group Editor."
+
+description = "ComfyUI workflow preset switching plugin that allows quick toggling between multiple presets in a single workflow using an index value."
 version = "1.0.0"
 license = {file = "LICENSE"} 
 # classifiers = [
@@ -24,11 +25,13 @@ license = {file = "LICENSE"}
 [project.urls]
 Repository = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets"
 #  Used by Comfy Registry https://registry.comfy.org
+
 Documentation = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets/blob/master/README.en.md"
 "Bug Tracker" = "https://github.com/CarlMarkswx/comfyui_workflow_state_presets/issues"
 
 [tool.comfy]
 PublisherId = "carlmarkswx"
+
 DisplayName = "comfyui_workflow_state_presets"
 Icon = ""
 includes = [] 
