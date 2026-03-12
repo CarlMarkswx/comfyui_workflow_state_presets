@@ -13,7 +13,11 @@ const PROPERTY_SHOW_NAV = "showNav";
 const PROPERTY_SHOW_ALL_GRAPHS = "showAllGraphs";
 const PROPERTY_SORT = "sort";
 const PROPERTY_SORT_CUSTOM_ALPHA = "customSortAlphabet";
+const PROPERTY_MANUAL_ORDER = "manualOrder";
 const PROPERTY_RESTRICTION = "toggleRestriction";
+
+const DRAG_HANDLE_WIDTH = 18;
+const DRAG_ACTIVATE_DISTANCE = 4;
 
 function normalizeHexColor(color) {
   if (!color) return "";
@@ -320,6 +324,169 @@ function applyManualOrder(groups, manualOrder) {
   return ordered;
 }
 
+function moveArrayItem(arr, from, to) {
+  const next = [...arr];
+  const max = Math.max(0, next.length - 1);
+  const f = Math.max(0, Math.min(max, from));
+  const t = Math.max(0, Math.min(max, to));
+  if (f === t) return next;
+  const [item] = next.splice(f, 1);
+  next.splice(t, 0, item);
+  return next;
+}
+
+function getGroupKey(group) {
+  const title = String(group?.title || "").trim().toLowerCase();
+  const color = normalizeHexColor(group?.color || "");
+  const x = Math.round((group?._pos?.[0] || 0) / 10) * 10;
+  const y = Math.round((group?._pos?.[1] || 0) / 10) * 10;
+  const w = Math.round((group?._size?.[0] || 0) / 10) * 10;
+  const h = Math.round((group?._size?.[1] || 0) / 10) * 10;
+  return `t:${title}|c:${color}|x:${x}|y:${y}|w:${w}|h:${h}`;
+}
+
+function parseManualOrderKeys(node) {
+  const raw = node?.properties?.[PROPERTY_MANUAL_ORDER];
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) ? parsed.map((x) => String(x || "")).filter(Boolean) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function applyManualOrderByKeys(groups, keyOrder) {
+  if (!Array.isArray(groups) || !groups.length) return [];
+  if (!Array.isArray(keyOrder) || !keyOrder.length) return groups;
+
+  const buckets = new Map();
+  for (const g of groups) {
+    const key = getGroupKey(g);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(g);
+  }
+
+  const ordered = [];
+  for (const key of keyOrder) {
+    const queue = buckets.get(key);
+    if (queue?.length) ordered.push(queue.shift());
+  }
+
+  for (const g of groups) {
+    if (!ordered.includes(g)) ordered.push(g);
+  }
+  return ordered;
+}
+
+function persistManualOrder(node, groups) {
+  const keys = (groups || []).map((g) => getGroupKey(g)).filter(Boolean);
+  node.properties[PROPERTY_MANUAL_ORDER] = JSON.stringify(keys);
+}
+
+function findRowByPos(node, pos, areaName) {
+  if (!Array.isArray(pos)) return null;
+  const [x, y] = pos;
+  for (const row of getRows(node)) {
+    const area = row?.__hitAreas?.[areaName];
+    if (!area) continue;
+    if (x >= area.x && x <= area.x + area.w && y >= area.y && y <= area.y + area.h) {
+      return row;
+    }
+  }
+  return null;
+}
+
+function getDropIndexByY(node, y) {
+  const rows = getRows(node);
+  if (!rows.length) return 0;
+  for (const row of rows) {
+    const rect = row?.__rowRect;
+    if (!rect) continue;
+    const centerY = rect.y + rect.h * 0.5;
+    if (y < centerY) return row.__rowIndex || 0;
+  }
+  return rows.length - 1;
+}
+
+function handleDragMouseDown(node, event, pos) {
+  if (event?.button != null && event.button !== 0) return false;
+  const row = findRowByPos(node, pos, "dragHandle");
+  if (!row) return false;
+
+  node.__fgmDragState = {
+    row,
+    sourceIndex: row.__rowIndex || 0,
+    targetIndex: row.__rowIndex || 0,
+    startPos: [pos[0], pos[1]],
+    lastPos: [pos[0], pos[1]],
+    active: false,
+  };
+  node.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function beginDragForRow(node, row, pos) {
+  if (!node || !row || !Array.isArray(pos)) return false;
+  const idx = typeof row.__rowIndex === "number" ? row.__rowIndex : 0;
+  node.__fgmDragState = {
+    row,
+    sourceIndex: idx,
+    targetIndex: idx,
+    startPos: [pos[0], pos[1]],
+    lastPos: [pos[0], pos[1]],
+    active: false,
+  };
+  node.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function handleDragMouseMove(node, _event, pos) {
+  const state = node.__fgmDragState;
+  if (!state || !Array.isArray(pos)) return false;
+  state.lastPos = [pos[0], pos[1]];
+
+  if (!state.active) {
+    const dx = Math.abs(pos[0] - state.startPos[0]);
+    const dy = Math.abs(pos[1] - state.startPos[1]);
+    if (Math.max(dx, dy) >= DRAG_ACTIVATE_DISTANCE) {
+      state.active = true;
+    } else {
+      return true;
+    }
+  }
+
+  state.targetIndex = getDropIndexByY(node, pos[1]);
+  node.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function handleDragMouseUp(node) {
+  const state = node.__fgmDragState;
+  if (!state) return false;
+  node.__fgmDragState = null;
+
+  if (!state.active) {
+    node.setDirtyCanvas?.(true, true);
+    return true;
+  }
+
+  const rows = getRows(node);
+  const groups = rows.map((r) => r.__group).filter(Boolean);
+  const reordered = moveArrayItem(groups, state.sourceIndex, state.targetIndex);
+
+  const changed = reordered.length === groups.length && reordered.some((g, i) => g !== groups[i]);
+  if (changed) {
+    node.__fgmManualOrder = reordered;
+    node.properties[PROPERTY_SORT] = "manual";
+    persistManualOrder(node, reordered);
+    refreshGroupWidgets(node);
+  } else {
+    node.setDirtyCanvas?.(true, true);
+  }
+  return true;
+}
+
 function stabilizeByCurrentRows(node, groups) {
   const rows = getRows(node);
   if (!rows.length) return groups;
@@ -414,13 +581,26 @@ function createGroupRowWidget(node, group) {
       const r = 5;
       const showNav = node?.properties?.[PROPERTY_SHOW_NAV] !== false;
       const layout = getControlLayout(width, showNav);
+      const dragState = node?.__fgmDragState;
+      const isDraggedRow = dragState?.active && dragState?.row === row;
+      const isDropTarget =
+        dragState?.active && typeof row.__rowIndex === "number" && dragState.targetIndex === row.__rowIndex;
 
       drawRoundedRectPath(ctx, 6, y + 2, width - 12, h - 4, 6);
-      ctx.fillStyle = "#252a31";
+      ctx.fillStyle = isDraggedRow ? "#2d3642" : "#252a31";
       ctx.fill();
       ctx.strokeStyle = "#3d4656";
       ctx.lineWidth = 1;
       ctx.stroke();
+
+      if (isDropTarget) {
+        ctx.strokeStyle = "#6ea8ff";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(8, y + h - 3);
+        ctx.lineTo(width - 8, y + h - 3);
+        ctx.stroke();
+      }
 
       ctx.strokeStyle = "#3d4656";
       ctx.lineWidth = 1;
@@ -451,19 +631,36 @@ function createGroupRowWidget(node, group) {
       drawCircle(ctx, bypassX, centerY, r, "#f1c24d", row.__state === "bypass");
       drawCircle(ctx, disableX, centerY, r, "#cf5e5e", row.__state === "disable");
 
+      const handleLeft = layout.nameLeft;
+      const handleW = DRAG_HANDLE_WIDTH;
+      const handleX = handleLeft + handleW * 0.5;
+
+      ctx.fillStyle = "#93a3bc";
+      ctx.font = "11px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("⋮⋮", handleX, y + h * 0.68);
+
       const label = String(group?.title || "Untitled Group 未命名分组");
-      const nameTextLeft = layout.nameLeft;
+      const nameTextLeft = layout.nameLeft + handleW + 4;
       const maxWidth = Math.max(40, layout.nameRight - nameTextLeft - 8);
       ctx.fillStyle = "#ddd";
       ctx.font = "12px Arial";
       ctx.textAlign = "left";
       ctx.fillText(fitLabel(ctx, label, maxWidth), nameTextLeft, y + h * 0.68);
 
+      row.__rowRect = { x: 6, y: y + 2, w: width - 12, h: h - 4 };
+
       row.__hitAreas = {
         name: {
+          x: layout.nameLeft + handleW + 2,
+          y: y + 2,
+          w: Math.max(12, layout.nameRight - layout.nameLeft - handleW - 2),
+          h: h - 4,
+        },
+        dragHandle: {
           x: layout.nameLeft,
           y: y + 2,
-          w: Math.max(12, layout.nameRight - layout.nameLeft),
+          w: handleW,
           h: h - 4,
         },
         enable: { x: enableX - r - 2, y: centerY - r - 2, w: r * 2 + 4, h: r * 2 + 4 },
@@ -483,8 +680,56 @@ function createGroupRowWidget(node, group) {
       const hit = row.__hitAreas;
       if (!hit) return false;
 
+      // 优先处理已开始的拖拽，避免事件被 row 层吞掉后节点层收不到
+      if (node?.__fgmDragState) {
+        if (isMove) return handleDragMouseMove(node, event, pos);
+        if (isUp) return handleDragMouseUp(node);
+      }
+
       const inside = (rect) =>
         !!rect && pos[0] >= rect.x && pos[0] <= rect.x + rect.w && pos[1] >= rect.y && pos[1] <= rect.y + rect.h;
+
+      if (inside(hit.dragHandle)) {
+        if (isDown) {
+          // 在 widget 层直接启动拖拽，避免节点级 onMouseDown 被提前消费
+          return beginDragForRow(node, row, pos) || handleDragMouseDown(node, event, pos);
+        }
+        if (isMove && node?.__fgmDragState) {
+          return handleDragMouseMove(node, event, pos);
+        }
+        if (isUp && node?.__fgmDragState) {
+          return handleDragMouseUp(node);
+        }
+        return true;
+      }
+
+      // 胶囊拖拽：除功能按钮区域外，整行都可按下拖拽
+      const rowRect = row.__rowRect;
+      const inCapsule =
+        !!rowRect &&
+        pos[0] >= rowRect.x &&
+        pos[0] <= rowRect.x + rowRect.w &&
+        pos[1] >= rowRect.y &&
+        pos[1] <= rowRect.y + rowRect.h;
+
+      if (inCapsule) {
+        const inControlArea =
+          inside(hit.name) ||
+          inside(hit.enable) ||
+          inside(hit.bypass) ||
+          inside(hit.disable) ||
+          inside(hit.nav);
+
+        if (!inControlArea && isDown) {
+          return beginDragForRow(node, row, pos);
+        }
+        if (!inControlArea && isMove && node?.__fgmDragState) {
+          return handleDragMouseMove(node, event, pos);
+        }
+        if (!inControlArea && isUp && node?.__fgmDragState) {
+          return handleDragMouseUp(node);
+        }
+      }
 
       if (inside(hit.enable)) {
         applyState(node, row, "enable");
@@ -539,6 +784,7 @@ function ensureProperties(node) {
     [PROPERTY_SHOW_ALL_GRAPHS]: true,
     [PROPERTY_SORT]: "position",
     [PROPERTY_SORT_CUSTOM_ALPHA]: "",
+    [PROPERTY_MANUAL_ORDER]: "",
     [PROPERTY_RESTRICTION]: "default",
   };
   for (const [k, v] of Object.entries(defaults)) {
@@ -558,6 +804,7 @@ function ensureProperties(node) {
         node.properties[PROPERTY_SORT_CUSTOM_ALPHA],
         "string",
       );
+      node.addProperty(PROPERTY_MANUAL_ORDER, node.properties[PROPERTY_MANUAL_ORDER], "string");
       node.addProperty(PROPERTY_RESTRICTION, node.properties[PROPERTY_RESTRICTION], "string");
     } catch (_) {}
   }
@@ -582,8 +829,17 @@ function refreshGroupWidgets(node) {
 
   const computedGroups = getGroupsFromNode(node);
   let groups = computedGroups;
-  if (Array.isArray(node.__fgmManualOrder) && node.__fgmManualOrder.length) {
-    groups = applyManualOrder(computedGroups, node.__fgmManualOrder);
+  const sortMode = String(node?.properties?.[PROPERTY_SORT] || "position").toLowerCase();
+  if (sortMode === "manual") {
+    if (!Array.isArray(node.__fgmManualOrder) || !node.__fgmManualOrder.length) {
+      const keyOrder = parseManualOrderKeys(node);
+      if (keyOrder.length) {
+        node.__fgmManualOrder = applyManualOrderByKeys(computedGroups, keyOrder);
+      }
+    }
+    if (Array.isArray(node.__fgmManualOrder) && node.__fgmManualOrder.length) {
+      groups = applyManualOrder(computedGroups, node.__fgmManualOrder);
+    }
   } else {
     groups = stabilizeByCurrentRows(node, computedGroups);
   }
@@ -605,17 +861,22 @@ function refreshGroupWidgets(node) {
   const headerWidget = existingHeader || createGroupHeaderWidget(node);
 
   const groupWidgets = [];
-  for (const group of groups) {
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
     let row = existingMap.get(group);
     if (!row) {
       row = createGroupRowWidget(node, group);
     }
     row.value = getNodeModeState(getGroupNodes(group));
     row.__state = row.value;
+    row.__rowIndex = i;
     groupWidgets.push(row);
   }
   node.widgets = [...fixedWidgets, headerWidget, ...groupWidgets];
   node.__fgmManualOrder = groupWidgets.map((w) => w.__group).filter(Boolean);
+  if (sortMode === "manual") {
+    persistManualOrder(node, node.__fgmManualOrder);
+  }
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -656,6 +917,28 @@ function injectNodeUI(node) {
     };
   }
 
+  if (!node.__fgmPatchedDnD) {
+    node.__fgmPatchedDnD = true;
+    const onMouseDown = node.onMouseDown;
+    const onMouseMove = node.onMouseMove;
+    const onMouseUp = node.onMouseUp;
+
+    node.onMouseDown = function onMouseDownPatched(event, pos, ...args) {
+      if (handleDragMouseDown(this, event, pos)) return true;
+      return onMouseDown?.call(this, event, pos, ...args);
+    };
+
+    node.onMouseMove = function onMouseMovePatched(event, pos, ...args) {
+      if (handleDragMouseMove(this, event, pos)) return true;
+      return onMouseMove?.call(this, event, pos, ...args);
+    };
+
+    node.onMouseUp = function onMouseUpPatched(event, pos, ...args) {
+      if (handleDragMouseUp(this, event, pos)) return true;
+      return onMouseUp?.call(this, event, pos, ...args);
+    };
+  }
+
   ensureProperties(node);
 
   if (!Array.isArray(node.outputs) || !node.outputs.length) {
@@ -682,6 +965,7 @@ function autoRefreshManagers() {
   if (!graph?._nodes?.length) return;
   for (const node of graph._nodes) {
     if (node?.type !== TARGET_NODE_NAME) continue;
+    if (node?.__fgmDragState?.active) continue;
     injectNodeUI(node);
     refreshGroupWidgets(node);
   }
